@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import {ERC20} from "./erc20.sol";
+
 interface ERC721 {
     function transferFrom(
         address _from,
@@ -9,24 +11,19 @@ interface ERC721 {
     ) external payable;
 }
 
-interface ERC20 {
-    function transfer(
-        address _to,
-        uint256 _value
-    ) external returns (bool success);
+interface IWETH {
+    function deposit() external payable;
 
-    function transferFrom(
-        address _from,
-        address _to,
-        uint256 _value
-    ) external returns (bool success);
+    function withdraw(uint) external;
 }
 
 error Ended();
 error InProgress();
+error InvalidDeadline();
+error NotEnoughTicketsRemaining();
 
 type RaffleId is uint256;
-type BlockNumber is uint256;
+type Blocknumber is uint256;
 
 struct Reward {
     address addy;
@@ -36,13 +33,15 @@ struct Reward {
 struct Ticket {
     address asset; // usdc, weth
     uint256 price;
+    uint256 max;
 }
 
 struct Raffle {
     address creator;
     Ticket ticket;
     Reward[] rewards;
-    BlockNumber deadline;
+    Blocknumber deadline;
+    Blocknumber init;
 }
 
 struct Participant {
@@ -51,15 +50,11 @@ struct Participant {
 }
 
 contract rfls {
-    event Created(
-        address indexed creator,
-        BlockNumber indexed deadline,
-        Reward[] indexed rewards
-    );
+    event Created(Raffle indexed raffle);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
     event BoughtTicket(
         RaffleId indexed raffle,
-        uint256 amount,
+        uint256 indexed amount,
         address indexed to
     );
 
@@ -70,14 +65,21 @@ contract rfls {
     uint256 $rafflesCounter = 0;
 
     uint8 constant FEE = 100;
+    address immutable FEE_RECEIVER;
 
-    function create(
-        Reward[] calldata rewards,
-        Ticket calldata ticket,
-        BlockNumber deadline
-    ) public {
-        for (uint8 i = 0; i <= rewards.length; ++i) {
-            Reward calldata reward = rewards[i];
+    address immutable WETH;
+
+    constructor(address _WETH, address _FEE_RECEIVER) {
+        WETH = _WETH;
+        FEE_RECEIVER = _FEE_RECEIVER;
+    }
+
+    function create(Raffle memory raffle) public {
+        if (Blocknumber.unwrap(raffle.deadline) > block.number)
+            revert InvalidDeadline();
+
+        for (uint8 i = 0; i <= raffle.rewards.length; ++i) {
+            Reward memory reward = raffle.rewards[i];
             ERC721(reward.addy).transferFrom(
                 msg.sender,
                 address(this),
@@ -85,31 +87,36 @@ contract rfls {
             );
         }
 
-        $raffles[RaffleId.wrap($rafflesCounter)] = Raffle({
-            creator: msg.sender,
-            deadline: deadline,
-            rewards: rewards,
-            ticket: ticket
-        });
+        raffle.creator = msg.sender;
+        raffle.init = Blocknumber.unwrap(raffle.init) == 0
+            ? Blocknumber.wrap(block.number)
+            : raffle.init;
+        $raffles[RaffleId.wrap($rafflesCounter)] = raffle;
         unchecked {
             $rafflesCounter++;
         }
 
-        emit Created(msg.sender, deadline, rewards);
+        emit Created(raffle);
     }
 
     function buyTicket(RaffleId id, uint256 amount, address to) public {
         Raffle memory raffle = $raffles[id];
-        if (block.number > BlockNumber.unwrap(raffle.deadline)) revert Ended();
+        if (block.number > Blocknumber.unwrap(raffle.deadline)) revert Ended();
+
+        if ($ticketsCounter[id] + amount > raffle.ticket.max)
+            revert NotEnoughTicketsRemaining();
 
         if (raffle.ticket.price > 100) {
             // just so we don't underflow here
             ERC20(raffle.ticket.asset).transfer(
-                address(this),
+                FEE_RECEIVER,
                 (raffle.ticket.price * FEE) / 10_000
             );
         }
-        ERC20(raffle.ticket.asset).transfer(to, amount * raffle.ticket.price);
+        ERC20(raffle.ticket.asset).transfer(
+            raffle.creator,
+            amount * raffle.ticket.price
+        );
 
         $participants[id].push(Participant({addy: to, tickets: amount}));
         $participantIndex[id][to] = $participants[id].length;
@@ -117,6 +124,16 @@ contract rfls {
         $ticketsCounter[id] += amount;
 
         emit BoughtTicket(id, amount, to);
+    }
+
+    function buyTicketEth(
+        RaffleId id,
+        uint256 amount,
+        address to
+    ) public payable {
+        require($raffles[id].ticket.asset == WETH, "wrong asset");
+        IWETH(WETH).deposit{value: msg.value}();
+        buyTicket(id, amount, to);
     }
 
     function pickWinner(
@@ -157,17 +174,17 @@ contract rfls {
 
     function draw(RaffleId id) public {
         Raffle memory raffle = $raffles[id];
-        uint deadline = BlockNumber.unwrap(raffle.deadline);
+        uint deadline = Blocknumber.unwrap(raffle.deadline);
 
         if (deadline > block.number) revert InProgress();
 
         uint256 weightsSum = $ticketsCounter[id];
-        // random must be less than weightsSum
 
-        // can wait until the result is favorable? yes
-        // but anyone can call while you waiting hopefully a bot will call right at the deadline
         uint256 random = uint256(
+            // can wait until the result is favorable? yes
+            // but anyone can call while you waiting hopefully a bot will call right at the deadline
             blockhash(block.number - deadline > 254 ? 254 : deadline)
+            // random must be less than weightsSum
         ) % weightsSum;
 
         address[] memory winners = pickWinners(
