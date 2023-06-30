@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
+
+import "forge-std/Test.sol";
 
 import {ERC20} from "../lib/openzeppelin-contracts/contracts//token/ERC20/ERC20.sol";
 import {ERC721} from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
+import {ERC1155} from "../lib/openzeppelin-contracts/contracts/token/ERC1155/ERC1155.sol";
 
-interface IWETH {
+interface NativeWrapper {
     function deposit() external payable;
 
     function withdraw(uint) external;
@@ -42,7 +45,53 @@ struct Participant {
     uint256 tickets;
 }
 
-contract Rfls {
+library WeightedRandom {
+    function pickOne(
+        uint256 random,
+        Participant[] memory participants
+    ) internal pure returns (uint256) {
+        unchecked {
+            for (uint256 i = 0; i < participants.length; i++) {
+                if (random < participants[i].tickets) return i;
+                random -= participants[i].tickets;
+            }
+            return 0; // should never get here
+        }
+    }
+
+    function pickMultiple(
+        Participant[] memory participants,
+        uint256 max,
+        uint256 weightsSum,
+        uint256 blocknumber
+    ) internal view returns (address[] memory) {
+        uint256 random = uint256(
+            // can wait until the result is favorable? yes (only if not called after 255 blocks)
+            // but anyone can call while you waiting hopefully a bot will call right at the deadline
+            blockhash(block.number - blocknumber > 254 ? 254 : blocknumber)
+            // random must be less than weightsSum
+        ) % weightsSum;
+
+        address[] memory winners = new address[](max);
+        unchecked {
+            for (uint256 i = 0; i < max; i++) {
+                uint256 winnerIndex = pickOne(random, participants);
+                winners[i] = participants[winnerIndex].addy;
+
+                // remove winner from participants
+                participants[winnerIndex] = participants[
+                    participants.length - 1
+                ];
+                delete participants[participants.length - 1];
+
+                if (participants.length == 0) return winners;
+            }
+        }
+        return winners;
+    }
+}
+
+contract Rfls is Test {
     event Created(Raffle indexed raffle);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
     event BoughtTicket(
@@ -60,31 +109,36 @@ contract Rfls {
     uint8 constant FEE = 100;
     address immutable FEE_RECEIVER;
 
-    address immutable WETH;
+    address immutable WRAPPED_NATIVE;
 
-    constructor(address _WETH, address _FEE_RECEIVER) {
-        WETH = _WETH;
-        FEE_RECEIVER = _FEE_RECEIVER;
+    constructor(address wrappedNative, address fee_receiver) {
+        WRAPPED_NATIVE = wrappedNative;
+        FEE_RECEIVER = fee_receiver;
     }
 
     function create(Raffle memory raffle) public {
-        if (Blocknumber.unwrap(raffle.deadline) > block.number)
+        if (block.number > Blocknumber.unwrap(raffle.deadline))
             revert InvalidDeadline();
 
-        for (uint8 i = 0; i <= raffle.rewards.length; ++i) {
+        RaffleId id = RaffleId.wrap($rafflesCounter);
+        for (uint8 i = 0; i < raffle.rewards.length; i++) {
             Reward memory reward = raffle.rewards[i];
-            ERC721(reward.addy).transferFrom(
+            ERC1155(reward.addy).safeTransferFrom(
                 msg.sender,
                 address(this),
-                reward.tokenId
+                reward.tokenId,
+                1,
+                bytes("")
             );
+            $raffles[id].rewards.push(reward);
         }
-
-        raffle.creator = msg.sender;
-        raffle.init = Blocknumber.unwrap(raffle.init) == 0
+        $raffles[id].creator = msg.sender;
+        $raffles[id].init = Blocknumber.unwrap(raffle.init) == 0
             ? Blocknumber.wrap(block.number)
             : raffle.init;
-        $raffles[RaffleId.wrap($rafflesCounter)] = raffle;
+        $raffles[id].deadline = raffle.deadline;
+        $raffles[id].ticket = raffle.ticket;
+
         unchecked {
             $rafflesCounter++;
         }
@@ -92,7 +146,11 @@ contract Rfls {
         emit Created(raffle);
     }
 
-    function buyTicket(RaffleId id, uint256 amount, address to) public {
+    function participate(
+        RaffleId id,
+        uint256 amount,
+        address participant
+    ) public {
         Raffle memory raffle = $raffles[id];
         if (block.number > Blocknumber.unwrap(raffle.deadline)) revert Ended();
 
@@ -111,58 +169,24 @@ contract Rfls {
             amount * raffle.ticket.price
         );
 
-        $participants[id].push(Participant({addy: to, tickets: amount}));
-        $participantIndex[id][to] = $participants[id].length;
+        $participants[id].push(
+            Participant({addy: participant, tickets: amount})
+        );
+        $participantIndex[id][participant] = $participants[id].length;
 
         $ticketsCounter[id] += amount;
 
-        emit BoughtTicket(id, amount, to);
+        emit BoughtTicket(id, amount, participant);
     }
 
-    function buyTicketEth(
+    function participateWithNative(
         RaffleId id,
         uint256 amount,
         address to
     ) public payable {
-        require($raffles[id].ticket.asset == WETH, "wrong asset");
-        IWETH(WETH).deposit{value: msg.value}();
-        buyTicket(id, amount, to);
-    }
-
-    function pickWinner(
-        uint256 random,
-        Participant[] memory participants
-    ) internal pure returns (uint256) {
-        unchecked {
-            for (uint256 i = 0; i < participants.length; i++) {
-                if (random < participants[i].tickets) return i;
-                random -= participants[i].tickets;
-            }
-            return 0; // should never get here
-        }
-    }
-
-    function pickWinners(
-        uint256 random,
-        Participant[] memory participants,
-        uint256 maxWinners
-    ) internal pure returns (address[] memory) {
-        address[] memory winners = new address[](maxWinners);
-        unchecked {
-            for (uint256 i = 0; i < maxWinners; i++) {
-                uint256 winnerIndex = pickWinner(random, participants);
-                winners[i] = participants[winnerIndex].addy;
-
-                // remove winner from participants
-                participants[winnerIndex] = participants[
-                    participants.length - 1
-                ];
-                delete participants[participants.length - 1];
-
-                if (participants.length == 0) return winners;
-            }
-        }
-        return winners;
+        require($raffles[id].ticket.asset == WRAPPED_NATIVE, "wrong asset");
+        NativeWrapper(WRAPPED_NATIVE).deposit{value: msg.value}();
+        participate(id, amount, to);
     }
 
     function draw(RaffleId id) public {
@@ -171,19 +195,11 @@ contract Rfls {
 
         if (deadline > block.number) revert InProgress();
 
-        uint256 weightsSum = $ticketsCounter[id];
-
-        uint256 random = uint256(
-            // can wait until the result is favorable? yes
-            // but anyone can call while you waiting hopefully a bot will call right at the deadline
-            blockhash(block.number - deadline > 254 ? 254 : deadline)
-            // random must be less than weightsSum
-        ) % weightsSum;
-
-        address[] memory winners = pickWinners(
-            random,
+        address[] memory winners = WeightedRandom.pickMultiple(
             $participants[id],
-            raffle.rewards.length
+            raffle.rewards.length,
+            $ticketsCounter[id],
+            deadline
         );
 
         unchecked {
@@ -212,5 +228,34 @@ contract Rfls {
         }
 
         emit Completed(id, winners);
+    }
+
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes memory
+    ) public virtual returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] memory,
+        uint256[] memory,
+        bytes memory
+    ) public virtual returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes memory
+    ) public virtual returns (bytes4) {
+        return this.onERC721Received.selector;
     }
 }

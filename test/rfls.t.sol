@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
@@ -11,7 +11,7 @@ import {NFT} from "./utils/erc1155.sol";
 contract RflsTest is Test {
     Rfls rfls = new Rfls(address(this), address(this));
 
-    Token usdc;
+    Token token;
     NFT nft;
 
     address internal creator;
@@ -24,8 +24,8 @@ contract RflsTest is Test {
         vm.label(firstParticipant, "First participant");
 
         vm.startPrank(creator);
-        usdc = new Token(100);
-        usdc.transfer(firstParticipant, 50);
+        token = new Token(100);
+        token.transfer(firstParticipant, 50);
         nft = new NFT();
         vm.stopPrank();
     }
@@ -35,7 +35,7 @@ contract RflsTest is Test {
         rewards[0] = Reward({addy: address(nft), tokenId: 1});
 
         Ticket memory ticket = Ticket({
-            asset: address(usdc,
+            asset: address(token),
             price: 10 * (10 ^ 6), // 10 usdc
             max: 100
         });
@@ -48,7 +48,20 @@ contract RflsTest is Test {
             init: Blocknumber.wrap(0)
         });
 
-        vm.prank(creator);
+        uint256 creatorRewardBalanceBefore = nft.balanceOf(
+            address(creator),
+            rewards[0].tokenId
+        );
+
+        vm.startPrank(creator);
+        nft.setApprovalForAll(address(rfls), true);
         rfls.create(raffle);
+        vm.stopPrank();
+
+        assert(nft.balanceOf(address(rfls), rewards[0].tokenId) == 1);
+        assert(
+            nft.balanceOf(address(creator), rewards[0].tokenId) ==
+                creatorRewardBalanceBefore - 1
+        );
     }
 }
