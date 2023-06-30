@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity 0.8.20;
 
-import {ERC20} from "./erc20.sol";
-
-interface ERC721 {
-    function transferFrom(
-        address _from,
-        address _to,
-        uint256 _tokenId
-    ) external payable;
-}
+import {ERC20} from "../lib/openzeppelin-contracts/contracts//token/ERC20/ERC20.sol";
+import {ERC721} from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
 
 interface IWETH {
     function deposit() external payable;
@@ -49,7 +42,7 @@ struct Participant {
     uint256 tickets;
 }
 
-contract rfls {
+contract Rfls {
     event Created(Raffle indexed raffle);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
     event BoughtTicket(

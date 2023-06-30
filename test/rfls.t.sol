@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity 0.8.20;
 
 import "forge-std/Test.sol";
 
-import {Raffle, Blocknumber, Reward, Participant, Ticket, rfls} from "../src/rfls.sol";
-import {ERC20} from "../src/erc20.sol";
+import {Raffle, Blocknumber, Reward, Participant, Ticket, Rfls} from "../src/rfls.sol";
 
-contract rflsTest is Test {
-    rfls _rfls = new rfls(address(this), address(this));
+import {Token} from "./utils/erc20.sol";
+import {NFT} from "./utils/erc1155.sol";
 
-    ERC20 usdc;
-    address nft;
+contract RflsTest is Test {
+    Rfls rfls = new Rfls(address(this), address(this));
+
+    Token usdc;
+    NFT nft;
 
     address internal creator;
     address internal firstParticipant;
@@ -22,17 +24,18 @@ contract rflsTest is Test {
         vm.label(firstParticipant, "First participant");
 
         vm.startPrank(creator);
-        usdc = new ERC20(100, "usdc", 6, "usdc");
+        usdc = new Token(100);
         usdc.transfer(firstParticipant, 50);
+        nft = new NFT();
         vm.stopPrank();
     }
 
     function testCreate() public {
         Reward[] memory rewards = new Reward[](1);
-        rewards[0] = Reward({addy: nft, tokenId: 1});
+        rewards[0] = Reward({addy: address(nft), tokenId: 1});
 
         Ticket memory ticket = Ticket({
-            asset: usdc,
+            asset: address(usdc,
             price: 10 * (10 ^ 6), // 10 usdc
             max: 100
         });
@@ -46,6 +49,6 @@ contract rflsTest is Test {
         });
 
         vm.prank(creator);
-        _rfls.create(raffle);
+        rfls.create(raffle);
     }
 }
