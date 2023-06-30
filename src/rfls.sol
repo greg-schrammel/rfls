@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
-
 import "forge-std/Test.sol";
 
 import {ERC20} from "../lib/openzeppelin-contracts/contracts//token/ERC20/ERC20.sol";
@@ -13,13 +12,13 @@ interface NativeWrapper {
     function withdraw(uint) external;
 }
 
+error NotStartedYet();
 error Ended();
 error InProgress();
 error InvalidDeadline();
 error NotEnoughTicketsRemaining();
 
 type RaffleId is uint256;
-type Blocknumber is uint256;
 
 struct Reward {
     address addy;
@@ -36,8 +35,8 @@ struct Raffle {
     address creator;
     Ticket ticket;
     Reward[] rewards;
-    Blocknumber deadline;
-    Blocknumber init;
+    uint256 deadline;
+    uint256 init;
 }
 
 struct Participant {
@@ -104,10 +103,10 @@ contract Rfls is Test {
     mapping(RaffleId => Participant[]) $participants;
     mapping(RaffleId => mapping(address => uint256)) $participantIndex;
     mapping(RaffleId => uint256) $ticketsCounter;
-    uint256 $rafflesCounter = 0;
+    uint256 public $rafflesCounter = 0;
 
-    uint8 constant FEE = 100;
-    address immutable FEE_RECEIVER;
+    uint8 public constant FEE = 100;
+    address public immutable FEE_RECEIVER;
 
     address immutable WRAPPED_NATIVE;
 
@@ -116,9 +115,12 @@ contract Rfls is Test {
         FEE_RECEIVER = fee_receiver;
     }
 
+    function getRaffle(RaffleId id) public view returns (Raffle memory) {
+        return $raffles[id];
+    }
+
     function create(Raffle memory raffle) public {
-        if (block.number > Blocknumber.unwrap(raffle.deadline))
-            revert InvalidDeadline();
+        if (block.number > raffle.deadline) revert InvalidDeadline();
 
         RaffleId id = RaffleId.wrap($rafflesCounter);
         for (uint8 i = 0; i < raffle.rewards.length; i++) {
@@ -133,11 +135,11 @@ contract Rfls is Test {
             $raffles[id].rewards.push(reward);
         }
         $raffles[id].creator = msg.sender;
-        $raffles[id].init = Blocknumber.unwrap(raffle.init) == 0
-            ? Blocknumber.wrap(block.number)
-            : raffle.init;
+        $raffles[id].init = raffle.init == 0 ? block.number : raffle.init;
         $raffles[id].deadline = raffle.deadline;
-        $raffles[id].ticket = raffle.ticket;
+        $raffles[id].ticket.asset = raffle.ticket.asset;
+        $raffles[id].ticket.price = raffle.ticket.price;
+        $raffles[id].ticket.max = raffle.ticket.max;
 
         unchecked {
             $rafflesCounter++;
@@ -152,22 +154,18 @@ contract Rfls is Test {
         address participant
     ) public {
         Raffle memory raffle = $raffles[id];
-        if (block.number > Blocknumber.unwrap(raffle.deadline)) revert Ended();
+
+        if (block.number < raffle.init) revert NotStartedYet();
+        if (block.number > raffle.deadline) revert Ended();
 
         if ($ticketsCounter[id] + amount > raffle.ticket.max)
             revert NotEnoughTicketsRemaining();
 
-        if (raffle.ticket.price > 100) {
-            // just so we don't underflow here
-            ERC20(raffle.ticket.asset).transfer(
-                FEE_RECEIVER,
-                (raffle.ticket.price * FEE) / 10_000
-            );
-        }
-        ERC20(raffle.ticket.asset).transfer(
-            raffle.creator,
-            amount * raffle.ticket.price
-        );
+        uint ticketPrice = raffle.ticket.price;
+        uint fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
+        uint amountAfterFee = (amount * raffle.ticket.price) - fee;
+        if (fee > 0) ERC20(raffle.ticket.asset).transfer(FEE_RECEIVER, fee);
+        ERC20(raffle.ticket.asset).transfer(raffle.creator, amountAfterFee);
 
         $participants[id].push(
             Participant({addy: participant, tickets: amount})
@@ -191,15 +189,14 @@ contract Rfls is Test {
 
     function draw(RaffleId id) public {
         Raffle memory raffle = $raffles[id];
-        uint deadline = Blocknumber.unwrap(raffle.deadline);
 
-        if (deadline > block.number) revert InProgress();
+        if (raffle.deadline > block.number) revert InProgress();
 
         address[] memory winners = WeightedRandom.pickMultiple(
             $participants[id],
             raffle.rewards.length,
             $ticketsCounter[id],
-            deadline
+            raffle.deadline
         );
 
         unchecked {
@@ -228,6 +225,14 @@ contract Rfls is Test {
         }
 
         emit Completed(id, winners);
+    }
+
+    function balanceOf(
+        address participant,
+        RaffleId id
+    ) public view virtual returns (uint256) {
+        uint participantIndex = $participantIndex[id][participant];
+        return $participants[id][participantIndex].tickets;
     }
 
     function onERC1155Received(
