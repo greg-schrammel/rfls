@@ -93,10 +93,10 @@ library WeightedRandom {
 contract Rfls is Test {
     event Created(Raffle indexed raffle);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
-    event BoughtTicket(
+    event Participate(
         RaffleId indexed raffle,
-        uint256 indexed amount,
-        address indexed to
+        uint256 indexed tickets,
+        address indexed participant
     );
 
     mapping(RaffleId => Raffle) $raffles;
@@ -137,9 +137,7 @@ contract Rfls is Test {
         $raffles[id].creator = msg.sender;
         $raffles[id].init = raffle.init == 0 ? block.number : raffle.init;
         $raffles[id].deadline = raffle.deadline;
-        $raffles[id].ticket.asset = raffle.ticket.asset;
-        $raffles[id].ticket.price = raffle.ticket.price;
-        $raffles[id].ticket.max = raffle.ticket.max;
+        $raffles[id].ticket = raffle.ticket;
 
         unchecked {
             $rafflesCounter++;
@@ -163,18 +161,27 @@ contract Rfls is Test {
 
         uint ticketPrice = raffle.ticket.price;
         uint fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
-        uint amountAfterFee = (amount * raffle.ticket.price) - fee;
-        if (fee > 0) ERC20(raffle.ticket.asset).transfer(FEE_RECEIVER, fee);
-        ERC20(raffle.ticket.asset).transfer(raffle.creator, amountAfterFee);
+        uint amountAfterFee = (amount * ticketPrice) - fee;
+        if (fee > 0)
+            ERC20(raffle.ticket.asset).transferFrom(
+                participant,
+                FEE_RECEIVER,
+                fee
+            );
+        ERC20(raffle.ticket.asset).transferFrom(
+            participant,
+            raffle.creator,
+            amountAfterFee
+        );
 
         $participants[id].push(
             Participant({addy: participant, tickets: amount})
         );
-        $participantIndex[id][participant] = $participants[id].length;
+        $participantIndex[id][participant] = $participants[id].length - 1;
 
         $ticketsCounter[id] += amount;
 
-        emit BoughtTicket(id, amount, participant);
+        emit Participate(id, amount, participant);
     }
 
     function participateWithNative(

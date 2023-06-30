@@ -80,9 +80,14 @@ contract RflsTest is Test {
         RaffleId raffleId = createRaffle(raffle);
 
         uint participantBalanceBefore = token.balanceOf(firstParticipant);
+        uint creatorBalanceBefore = token.balanceOf(address(creator));
 
-        vm.prank(firstParticipant);
+        vm.startPrank(firstParticipant);
+
+        token.approve(address(rfls), raffle.ticket.price);
         rfls.participate(raffleId, 1, address(firstParticipant));
+
+        vm.stopPrank();
 
         assert(rfls.balanceOf(address(firstParticipant), raffleId) == 1);
         assert(
@@ -90,15 +95,13 @@ contract RflsTest is Test {
                 participantBalanceBefore - raffle.ticket.price
         );
 
-        uint ticketPrice = raffle.ticket.price;
-        uint fee = ticketPrice > 100 ? (ticketPrice * rfls.FEE()) / 10_000 : 0;
+        uint fee = (raffle.ticket.price * rfls.FEE()) / 10_000;
         uint amountAfterFee = (1 * raffle.ticket.price) - fee;
 
-        emit log_uint(fee);
-        emit log_uint(amountAfterFee);
-        // raffle.ticket.price
-        // assert(
-        //     token.balanceOf(rfls.FEE_RECEIVER()) ==
-        // );
+        assert(token.balanceOf(rfls.FEE_RECEIVER()) == fee);
+        assert(
+            token.balanceOf(address(creator)) ==
+                creatorBalanceBefore + amountAfterFee
+        );
     }
 }
