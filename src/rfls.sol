@@ -143,9 +143,12 @@ contract Rfls {
     ) internal {
         if (reward.rewardType == RewardType.erc721)
             ERC721(reward.addy).transferFrom(from, to, reward.tokenId);
-        else if (reward.rewardType == RewardType.erc20)
-            ERC20(reward.addy).transferFrom(from, to, reward.amount);
-        else
+        else if (reward.rewardType == RewardType.erc20) {
+            // ew
+            if (from == address(this))
+                ERC20(reward.addy).transfer(to, reward.amount);
+            else ERC20(reward.addy).transferFrom(from, to, reward.amount);
+        } else
             ERC1155(reward.addy).safeTransferFrom(
                 from,
                 to,
