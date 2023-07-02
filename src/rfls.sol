@@ -289,12 +289,12 @@ contract Rfls {
     function balanceOf(
         address participant,
         RaffleId id
-    ) public view virtual returns (uint256) {
+    ) public view returns (uint256) {
         uint participantIndex = $participantIndex[id][participant];
         return $participants[id][participantIndex].tickets;
     }
 
-    function uri(RaffleId id) public view virtual returns (string memory) {
+    function uri(RaffleId id) public view returns (string memory) {
         return $raffles[id].ticket.uri;
     }
 
@@ -304,7 +304,7 @@ contract Rfls {
         uint256,
         uint256,
         bytes memory
-    ) public virtual returns (bytes4) {
+    ) public pure returns (bytes4) {
         return this.onERC1155Received.selector;
     }
 
@@ -314,7 +314,7 @@ contract Rfls {
         uint256[] memory,
         uint256[] memory,
         bytes memory
-    ) public virtual returns (bytes4) {
+    ) public pure returns (bytes4) {
         return this.onERC1155BatchReceived.selector;
     }
 
@@ -323,7 +323,7 @@ contract Rfls {
         address,
         uint256,
         bytes memory
-    ) public virtual returns (bytes4) {
+    ) public pure returns (bytes4) {
         return this.onERC721Received.selector;
     }
 }
