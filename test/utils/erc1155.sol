@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {ERC1155} from "../../lib/openzeppelin-contracts/contracts/token/ERC1155/ERC1155.sol";
+import {ERC1155} from "../../lib/solady/src/tokens/ERC1155.sol";
 
 contract _ERC1155 is ERC1155 {
     uint256[] ids;
     uint256[] amounts;
 
-    constructor() ERC1155("") {
+    constructor() {
         ids.push(1);
         ids.push(2);
         ids.push(3);
@@ -18,6 +18,12 @@ contract _ERC1155 is ERC1155 {
         amounts.push(1);
         amounts.push(1);
 
-        _mintBatch(msg.sender, amounts, amounts, bytes(""));
+        _batchMint(msg.sender, ids, amounts, bytes(""));
+    }
+
+    string[] s;
+
+    function uri(uint256 id) public view override returns (string memory) {
+        return s[id];
     }
 }

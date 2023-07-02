@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {ERC20} from "../lib/openzeppelin-contracts/contracts//token/ERC20/ERC20.sol";
-import {ERC721} from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
-import {ERC1155} from "../lib/openzeppelin-contracts/contracts/token/ERC1155/ERC1155.sol";
-
-interface NativeWrapper {
-    function deposit() external payable;
-
-    function withdraw(uint) external;
-}
+import {ERC20} from "../lib/solady/src/tokens/ERC20.sol";
+import {ERC721} from "../lib/solady/src/tokens/ERC721.sol";
+import {ERC1155} from "../lib/solady/src/tokens/ERC1155.sol";
+import {WETH} from "../lib/solady/src/tokens/WETH.sol";
 
 error NotStartedYet();
 error Ended();
@@ -38,6 +33,7 @@ struct Ticket {
     address asset; // usdc, weth
     uint256 price;
     uint256 max;
+    string uri;
 }
 
 struct Raffle {
@@ -133,17 +129,11 @@ contract Rfls {
     uint8 public constant FEE = 100;
     address public immutable FEE_RECEIVER;
 
-    address immutable WRAPPED_NATIVE;
+    address payable immutable WRAPPED_NATIVE;
 
     constructor(address wrappedNative, address fee_receiver) {
-        WRAPPED_NATIVE = wrappedNative;
+        WRAPPED_NATIVE = payable(wrappedNative);
         FEE_RECEIVER = fee_receiver;
-    }
-
-    function getParticipants(
-        RaffleId id
-    ) public view returns (Participant[] memory) {
-        return $participants[id];
     }
 
     function _transferReward(
@@ -195,7 +185,7 @@ contract Rfls {
     function helpCreatorScrewedUp(RaffleId id) public {
         if ($raffles[id].creator != msg.sender) revert NotTheCreator();
         if ($ticketsCounter[id] != 0) revert InProgress();
-        $raffles[id].completed = true;
+        delete $raffles[id];
 
         Raffle memory raffle = $raffles[id];
         for (uint8 i = 0; i < raffle.rewards.length; i++) {
@@ -253,7 +243,7 @@ contract Rfls {
         address to
     ) public payable {
         require($raffles[id].ticket.asset == WRAPPED_NATIVE, "wrong asset");
-        NativeWrapper(WRAPPED_NATIVE).deposit{value: msg.value}();
+        WETH(WRAPPED_NATIVE).deposit{value: msg.value}();
         participate(id, amount, to);
     }
 
@@ -279,11 +269,9 @@ contract Rfls {
         );
 
         unchecked {
-            uint rewardsToDistributeAmount = raffle.rewards.length -
-                (raffle.rewards.length - winners.length);
             uint i = 0;
 
-            for (; i < rewardsToDistributeAmount; i++) {
+            for (; i < winners.length; i++) {
                 Reward memory reward = raffle.rewards[i];
                 _transferReward(reward, address(this), winners[i]);
             }
@@ -304,6 +292,10 @@ contract Rfls {
     ) public view virtual returns (uint256) {
         uint participantIndex = $participantIndex[id][participant];
         return $participants[id][participantIndex].tickets;
+    }
+
+    function uri(RaffleId id) public view virtual returns (string memory) {
+        return $raffles[id].ticket.uri;
     }
 
     function onERC1155Received(

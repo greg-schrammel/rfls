@@ -63,7 +63,7 @@ contract RflsTest is Test {
     function makeRaffle() internal view returns (Raffle memory raffle) {
         raffle = Raffle({
             rewards: makeRewards(),
-            ticket: Ticket(address(token), 1 ether, 100),
+            ticket: Ticket(address(token), 1 ether, 100, ""),
             deadline: block.number + 10,
             init: 0,
             creator: address(0),
