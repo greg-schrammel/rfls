@@ -43,7 +43,7 @@ contract RflsTest is Test {
         vm.stopPrank();
     }
 
-    function makeRewards() internal view returns (Reward[] memory) {
+    function _rewards() internal view returns (Reward[] memory) {
         Reward[] memory rewards = new Reward[](2);
         rewards[0] = Reward({
             addy: address(nft),
@@ -57,12 +57,18 @@ contract RflsTest is Test {
             amount: 1,
             rewardType: RewardType.erc721
         });
+        rewards[2] = Reward({
+            addy: address(token),
+            tokenId: 0,
+            amount: 10,
+            rewardType: RewardType.erc20
+        });
         return rewards;
     }
 
-    function makeRaffle() internal view returns (Raffle memory raffle) {
+    function _raffle() internal view returns (Raffle memory raffle) {
         raffle = Raffle({
-            rewards: makeRewards(),
+            rewards: _rewards(),
             ticket: Ticket(address(token), 1 ether, 100, ""),
             deadline: block.number + 10,
             init: 0,
@@ -72,7 +78,7 @@ contract RflsTest is Test {
         });
     }
 
-    function createRaffle(Raffle memory raffle) internal returns (RaffleId) {
+    function _createRaffle(Raffle memory raffle) internal returns (RaffleId) {
         vm.startPrank(creator);
 
         nft.setApprovalForAll(address(rfls), true);
@@ -85,23 +91,23 @@ contract RflsTest is Test {
     }
 
     function testCreate() public {
-        Raffle memory raffle = makeRaffle();
+        Raffle memory raffle = _raffle();
 
         uint256 creatorRewardBalanceBefore = nft.balanceOf(
             address(creator),
             raffle.rewards[0].tokenId
         );
 
-        createRaffle(raffle);
+        _createRaffle(raffle);
 
-        assert(nft.balanceOf(address(rfls), raffle.rewards[0].tokenId) == 1);
-        assert(
-            nft.balanceOf(address(creator), raffle.rewards[0].tokenId) ==
-                creatorRewardBalanceBefore - 1
+        assertEq(nft.balanceOf(address(rfls), raffle.rewards[0].tokenId), 1);
+        assertEq(
+            nft.balanceOf(address(creator), raffle.rewards[0].tokenId),
+            creatorRewardBalanceBefore - 1
         );
 
-        assert(nft2.balanceOf(address(rfls)) == 1);
-        assert(nft2.balanceOf(address(creator)) == 0);
+        assertEq(nft2.balanceOf(address(rfls)), 1);
+        assertEq(nft2.balanceOf(address(creator)), 0);
     }
 
     function addParticipant(
@@ -119,34 +125,34 @@ contract RflsTest is Test {
     }
 
     function testParticipate() public {
-        Raffle memory raffle = makeRaffle();
+        Raffle memory raffle = _raffle();
 
-        RaffleId raffleId = createRaffle(raffle);
+        RaffleId raffleId = _createRaffle(raffle);
 
         uint participantBalanceBefore = token.balanceOf(firstParticipant);
         uint recipientBalanceBefore = token.balanceOf(address(recipient));
 
         addParticipant(raffleId, raffle, firstParticipant, 1);
 
-        assert(rfls.balanceOf(address(firstParticipant), raffleId) == 1);
-        assert(
-            token.balanceOf(firstParticipant) ==
-                participantBalanceBefore - raffle.ticket.price
+        assertEq(rfls.balanceOf(address(firstParticipant), raffleId), 1);
+        assertEq(
+            token.balanceOf(firstParticipant),
+            participantBalanceBefore - raffle.ticket.price
         );
 
         uint fee = (raffle.ticket.price * rfls.FEE()) / 10_000;
         uint amountAfterFee = (1 * raffle.ticket.price) - fee;
 
-        assert(token.balanceOf(rfls.FEE_RECEIVER()) == fee);
-        assert(
-            token.balanceOf(address(recipient)) ==
-                recipientBalanceBefore + amountAfterFee
+        assertEq(token.balanceOf(rfls.FEE_RECEIVER()), fee);
+        assertEq(
+            token.balanceOf(address(recipient)),
+            recipientBalanceBefore + amountAfterFee
         );
     }
 
     function testDraw() public {
-        Raffle memory raffle = makeRaffle();
-        RaffleId raffleId = createRaffle(raffle);
+        Raffle memory raffle = _raffle();
+        RaffleId raffleId = _createRaffle(raffle);
 
         addParticipant(raffleId, raffle, firstParticipant, 4);
         addParticipant(raffleId, raffle, secondParticipant, 5);
@@ -155,7 +161,7 @@ contract RflsTest is Test {
         vm.roll(raffle.deadline + 1);
         rfls.draw(raffleId);
 
-        assert(nft.balanceOf(firstParticipant, 1) == 1);
-        assert(nft2.balanceOf(thirdParticipant) == 1);
+        assertEq(nft.balanceOf(firstParticipant, 1), 1);
+        assertEq(nft2.balanceOf(thirdParticipant), 1);
     }
 }
