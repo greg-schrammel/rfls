@@ -165,19 +165,10 @@ contract Rfls {
             );
     }
 
-    function _approveReward(Reward memory reward) internal {
-        if (reward.rewardType == RewardType.erc721)
-            ERC721(reward.addy).approve(address(this), reward.tokenId);
-        else if (reward.rewardType == RewardType.erc20)
-            ERC20(reward.addy).approve(address(this), reward.amount);
-        // else ERC1155(reward.addy).setApprovalForAll(address(this), true);
-    }
-
     function addRewards(RaffleId id, Reward[] memory rewards) public {
         for (uint8 i = 0; i < rewards.length; i++) {
             Reward memory reward = rewards[i];
             _transferReward(reward, msg.sender, address(this));
-            // _approveReward(reward);
             $raffles[id].rewards.push(reward);
         }
     }
