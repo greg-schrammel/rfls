@@ -12,24 +12,27 @@ contract RflsTest is Test, RflsTestSetupUtils {
         Reward[] memory rewards = _rewards();
 
         uint[3] memory balancesBefore;
-        balancesBefore[0] = nft.balanceOf(address(creator), rewards[0].tokenId);
-        balancesBefore[1] = nft2.balanceOf(address(creator));
-        balancesBefore[2] = token.balanceOf(address(creator));
+        balancesBefore[0] = erc1155.balanceOf(
+            address(creator),
+            rewards[0].tokenId
+        );
+        balancesBefore[1] = erc721.balanceOf(address(creator));
+        balancesBefore[2] = erc20.balanceOf(address(creator));
 
         _createRaffle(raffle, rewards);
 
-        assertEq(nft.balanceOf(address(rfls), rewards[0].tokenId), 1);
+        assertEq(erc1155.balanceOf(address(rfls), rewards[0].tokenId), 1);
         assertEq(
-            nft.balanceOf(creator, rewards[0].tokenId),
+            erc1155.balanceOf(creator, rewards[0].tokenId),
             balancesBefore[0] - 1
         );
 
-        assertEq(nft2.balanceOf(address(rfls)), 1);
-        assertEq(nft2.balanceOf(creator), balancesBefore[1] - 1);
+        assertEq(erc721.balanceOf(address(rfls)), 1);
+        assertEq(erc721.balanceOf(creator), balancesBefore[1] - 1);
 
-        assertEq(token.balanceOf(address(rfls)), rewards[2].amount);
+        assertEq(erc20.balanceOf(address(rfls)), rewards[2].amount);
         assertEq(
-            token.balanceOf(creator),
+            erc20.balanceOf(creator),
             balancesBefore[2] - rewards[2].amount
         );
     }
@@ -49,23 +52,29 @@ contract RflsTest is Test, RflsTestSetupUtils {
         Reward[] memory rewards = _rewards();
 
         uint256[3] memory balancesBefore;
-        balancesBefore[0] = nft.balanceOf(address(creator), rewards[0].tokenId);
-        balancesBefore[1] = nft2.balanceOf(address(creator));
-        balancesBefore[2] = token.balanceOf(address(creator));
+        balancesBefore[0] = erc1155.balanceOf(
+            address(creator),
+            rewards[0].tokenId
+        );
+        balancesBefore[1] = erc721.balanceOf(address(creator));
+        balancesBefore[2] = erc20.balanceOf(address(creator));
 
         RaffleId id = _createRaffle(raffle, rewards);
 
         vm.prank(creator);
         rfls.helpCreatorScrewedUp(id);
 
-        assertEq(nft.balanceOf(address(rfls), rewards[0].tokenId), 0);
-        assertEq(nft.balanceOf(creator, rewards[0].tokenId), balancesBefore[0]);
+        assertEq(erc1155.balanceOf(address(rfls), rewards[0].tokenId), 0);
+        assertEq(
+            erc1155.balanceOf(creator, rewards[0].tokenId),
+            balancesBefore[0]
+        );
 
-        assertEq(nft2.balanceOf(address(rfls)), 0);
-        assertEq(nft2.balanceOf(creator), balancesBefore[1]);
+        assertEq(erc721.balanceOf(address(rfls)), 0);
+        assertEq(erc721.balanceOf(creator), balancesBefore[1]);
 
-        assertEq(token.balanceOf(address(rfls)), 0);
-        assertEq(token.balanceOf(creator), balancesBefore[2]);
+        assertEq(erc20.balanceOf(address(rfls)), 0);
+        assertEq(erc20.balanceOf(creator), balancesBefore[2]);
     }
 
     function testHelpCreatorScrewedUp_NotTheCretor() public {
@@ -99,8 +108,8 @@ contract RflsTest is Test, RflsTestSetupUtils {
 
         RaffleId id = _createRaffle(raffle, rewards);
 
-        uint participantBalanceBefore = token.balanceOf(participants[0]);
-        uint recipientBalanceBefore = token.balanceOf(recipient);
+        uint participantBalanceBefore = erc20.balanceOf(participants[0]);
+        uint recipientBalanceBefore = erc20.balanceOf(recipient);
 
         uint ticketAmount = 1;
 
@@ -108,16 +117,16 @@ contract RflsTest is Test, RflsTestSetupUtils {
 
         assertEq(rfls.balanceOf(participants[0], id), ticketAmount);
         assertEq(
-            token.balanceOf(participants[0]),
+            erc20.balanceOf(participants[0]),
             participantBalanceBefore - ticketAmount * raffle.ticket.price
         );
 
         uint fee = (raffle.ticket.price * rfls.FEE()) / 10_000;
         uint amountAfterFee = (ticketAmount * raffle.ticket.price) - fee;
 
-        assertEq(token.balanceOf(rfls.FEE_RECEIVER()), fee);
+        assertEq(erc20.balanceOf(rfls.FEE_RECEIVER()), fee);
         assertEq(
-            token.balanceOf(recipient),
+            erc20.balanceOf(recipient),
             recipientBalanceBefore + amountAfterFee
         );
     }
@@ -178,15 +187,15 @@ contract RflsTest is Test, RflsTestSetupUtils {
         _addParticipant(id, participants[1], 5);
         _addParticipant(id, participants[2], 2);
 
-        uint tokenWinnerBalanceBefore = token.balanceOf(participants[1]);
+        uint tokenWinnerBalanceBefore = erc20.balanceOf(participants[1]);
 
         vm.roll(raffle.deadline + 1);
         rfls.draw(id);
 
-        assertEq(nft.balanceOf(participants[0], 1), 1);
-        assertEq(nft2.balanceOf(participants[2]), 1);
+        assertEq(erc1155.balanceOf(participants[0], 1), 1);
+        assertEq(erc721.balanceOf(participants[2]), 1);
         assertEq(
-            token.balanceOf(participants[1]),
+            erc20.balanceOf(participants[1]),
             tokenWinnerBalanceBefore + rewards[2].amount
         );
     }
@@ -196,18 +205,24 @@ contract RflsTest is Test, RflsTestSetupUtils {
         Reward[] memory rewards = _rewards();
 
         uint256[3] memory balancesBefore;
-        balancesBefore[0] = nft.balanceOf(address(creator), rewards[0].tokenId);
-        balancesBefore[1] = nft2.balanceOf(address(creator));
-        balancesBefore[2] = token.balanceOf(address(creator));
+        balancesBefore[0] = erc1155.balanceOf(
+            address(creator),
+            rewards[0].tokenId
+        );
+        balancesBefore[1] = erc721.balanceOf(address(creator));
+        balancesBefore[2] = erc20.balanceOf(address(creator));
 
         RaffleId id = _createRaffle(raffle, rewards);
 
         vm.roll(raffle.deadline + 1);
         rfls.draw(id);
 
-        assertEq(nft.balanceOf(creator, rewards[0].tokenId), balancesBefore[0]);
-        assertEq(nft2.balanceOf(creator), balancesBefore[1]);
-        assertEq(token.balanceOf(creator), balancesBefore[2]);
+        assertEq(
+            erc1155.balanceOf(creator, rewards[0].tokenId),
+            balancesBefore[0]
+        );
+        assertEq(erc721.balanceOf(creator), balancesBefore[1]);
+        assertEq(erc20.balanceOf(creator), balancesBefore[2]);
     }
 
     function testDraw_InProgress() public {

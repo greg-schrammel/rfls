@@ -12,9 +12,9 @@ import {_ERC721} from "./mocks/erc721.sol";
 contract RflsTestSetupUtils is Test {
     Rfls rfls = new Rfls(address(this), address(this));
 
-    _ERC20 token;
-    _ERC1155 nft;
-    _ERC721 nft2;
+    _ERC20 erc20;
+    _ERC1155 erc1155;
+    _ERC721 erc721;
 
     address creator;
     address recipient;
@@ -30,13 +30,13 @@ contract RflsTestSetupUtils is Test {
 
         vm.startPrank(creator);
 
-        token = new _ERC20(100 ether);
-        token.transfer(participants[0], 20 ether);
-        token.transfer(participants[1], 30 ether);
-        token.transfer(participants[2], 20 ether);
+        erc20 = new _ERC20(100 ether);
+        erc20.transfer(participants[0], 20 ether);
+        erc20.transfer(participants[1], 30 ether);
+        erc20.transfer(participants[2], 20 ether);
 
-        nft = new _ERC1155();
-        nft2 = new _ERC721();
+        erc1155 = new _ERC1155();
+        erc721 = new _ERC721();
 
         vm.stopPrank();
     }
@@ -44,19 +44,19 @@ contract RflsTestSetupUtils is Test {
     function _rewards() internal view returns (Reward[] memory) {
         Reward[] memory rewards = new Reward[](3);
         rewards[0] = Reward({
-            addy: address(nft),
+            addy: address(erc1155),
             tokenId: 1,
             amount: 1,
             rewardType: RewardType.erc1155
         });
         rewards[1] = Reward({
-            addy: address(nft2),
+            addy: address(erc721),
             tokenId: 1,
             amount: 1,
             rewardType: RewardType.erc721
         });
         rewards[2] = Reward({
-            addy: address(token),
+            addy: address(erc20),
             tokenId: 0,
             amount: 10,
             rewardType: RewardType.erc20
@@ -66,7 +66,7 @@ contract RflsTestSetupUtils is Test {
 
     function _raffle() internal view returns (Raffle memory raffle) {
         raffle = Raffle({
-            ticket: Ticket(1 ether, 100, address(token), ""),
+            ticket: Ticket(1 ether, 100, address(erc20), ""),
             deadline: block.number + 10,
             init: 0,
             creator: address(0),
@@ -81,9 +81,9 @@ contract RflsTestSetupUtils is Test {
     ) internal returns (RaffleId) {
         vm.startPrank(creator);
 
-        nft.setApprovalForAll(address(rfls), true);
-        nft2.approve(address(rfls), 1);
-        token.approve(address(rfls), 1000);
+        erc1155.setApprovalForAll(address(rfls), true);
+        erc721.approve(address(rfls), 1);
+        erc20.approve(address(rfls), 1000);
         rfls.create(raffle, rewards);
 
         vm.stopPrank();
@@ -98,7 +98,7 @@ contract RflsTestSetupUtils is Test {
     ) internal {
         vm.startPrank(participant);
 
-        token.approve(address(rfls), type(uint).max);
+        erc20.approve(address(rfls), type(uint).max);
         rfls.participate(id, tickets, address(participant));
 
         vm.stopPrank();
