@@ -86,6 +86,8 @@ library WeightedRandom {
         uint256 weightsSum,
         uint256 max
     ) internal pure returns (address[] memory) {
+        if (weightsSum == 0) return new address[](0);
+
         address[] memory winners = new address[](max);
         unchecked {
             for (uint256 i = 0; i < max; i++) {
@@ -119,12 +121,14 @@ contract Rfls {
         uint256 value
     );
 
+    uint256 public $rafflesCounter = 0;
     mapping(RaffleId => Raffle) public $raffles;
     mapping(RaffleId => Reward[]) public $rewards;
+
     mapping(RaffleId => Participant[]) public $participants;
-    mapping(RaffleId => mapping(address => uint256)) $participantIndex;
+    mapping(RaffleId => mapping(address => uint256)) internal $participantIndex;
+
     mapping(RaffleId => uint256) public $ticketsCounter;
-    uint256 public $rafflesCounter = 0;
 
     uint8 public constant FEE = 100;
     address public immutable FEE_RECEIVER;
@@ -166,7 +170,7 @@ contract Rfls {
     }
 
     function create(Raffle memory raffle, Reward[] memory rewards) public {
-        if (block.number > raffle.deadline) revert InvalidDeadline();
+        if (block.number >= raffle.deadline) revert InvalidDeadline();
 
         RaffleId id = RaffleId.wrap($rafflesCounter);
 
@@ -203,8 +207,7 @@ contract Rfls {
         Raffle memory raffle = $raffles[id];
 
         if (block.number < raffle.init) revert NotStartedYet();
-        if (block.number > raffle.deadline) revert Ended();
-        if (raffle.completed == true) revert AlreadyCompleted();
+        if (block.number >= raffle.deadline) revert Ended();
 
         $ticketsCounter[id] += amount;
         if ($ticketsCounter[id] > raffle.ticket.max)
@@ -225,8 +228,10 @@ contract Rfls {
             amountAfterFee
         );
 
+        // ADASDASDASD
         $participantIndex[id][participant] = $participants[id].length;
         $participants[id].push(Participant(amount, participant));
+        // ADASDASDASD
 
         emit Participate(id, amount, participant);
 
@@ -253,28 +258,28 @@ contract Rfls {
         Raffle memory raffle = $raffles[id];
         $raffles[id].completed = true;
         if (raffle.completed == true) revert AlreadyCompleted();
-        if (raffle.deadline > block.number) revert InProgress();
-
-        uint256 randomSample = uint256(
-            blockhash(
-                block.number - raffle.deadline > 254 ? 255 : raffle.deadline
-            )
-        );
+        if (block.number <= raffle.deadline) revert InProgress();
 
         Reward[] memory rewards = $rewards[id];
 
         address[] memory winners = WeightedRandom.pickMultiple(
             $participants[id],
-            randomSample,
+            uint256(
+                blockhash(
+                    block.number - raffle.deadline > 254 ? 255 : raffle.deadline
+                )
+            ),
             $ticketsCounter[id],
             rewards.length
         );
 
         unchecked {
             uint i = 0;
+
             for (; i < winners.length; i++) {
                 _transferReward(rewards[i], address(this), winners[i]);
             }
+
             // return rewards not distributed to the raffle creator
             for (; i < rewards.length; i++) {
                 _transferReward(rewards[i], address(this), raffle.creator);

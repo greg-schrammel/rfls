@@ -91,15 +91,14 @@ contract RflsTestSetupUtils is Test {
         return RaffleId.wrap(rfls.$rafflesCounter() - 1);
     }
 
-    function addParticipant(
+    function _addParticipant(
         RaffleId id,
-        Raffle memory raffle,
         address participant,
         uint tickets
     ) internal {
         vm.startPrank(participant);
 
-        token.approve(address(rfls), raffle.ticket.price * tickets);
+        token.approve(address(rfls), type(uint).max);
         rfls.participate(id, tickets, address(participant));
 
         vm.stopPrank();
