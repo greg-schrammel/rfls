@@ -60,6 +60,7 @@ contract Rfls {
         uint256 id,
         uint256 value
     );
+    event URI(string value, uint256 indexed id);
 
     uint256 public $rafflesCounter = 0;
     mapping(RaffleId => Raffle) public $raffles;
@@ -71,12 +72,16 @@ contract Rfls {
 
     uint8 public constant FEE = 100;
     address public immutable FEE_RECEIVER;
+    address public immutable OWNER;
+
+    string fallbackUri;
 
     address payable immutable WRAPPED_NATIVE;
 
-    constructor(address wrappedNative, address fee_receiver) {
+    constructor(address wrappedNative, address fee_receiver, address owner) {
         WRAPPED_NATIVE = payable(wrappedNative);
         FEE_RECEIVER = fee_receiver;
+        OWNER = owner;
     }
 
     function _transferReward(
@@ -85,13 +90,18 @@ contract Rfls {
         address to
     ) internal {
         if (reward.rewardType == RewardType.erc721)
-            ERC721(reward.addy).transferFrom(from, to, reward.tokenId);
-        else if (reward.rewardType == RewardType.erc20) {
-            // ew
-            if (from == address(this))
-                ERC20(reward.addy).transfer(to, reward.amount);
-            else ERC20(reward.addy).transferFrom(from, to, reward.amount);
-        } else
+            return ERC721(reward.addy).transferFrom(from, to, reward.tokenId);
+
+        if (reward.rewardType == RewardType.erc20) {
+            // ew 🤮
+            ERC20 token = ERC20(reward.addy);
+            if (from == address(this)) token.transfer(to, reward.amount);
+            else token.transferFrom(from, to, reward.amount);
+
+            return;
+        }
+
+        return
             ERC1155(reward.addy).safeTransferFrom(
                 from,
                 to,
@@ -276,8 +286,25 @@ contract Rfls {
         return $participantTickets[id][participant];
     }
 
-    function uri(RaffleId id) public view returns (string memory) {
-        return $raffles[id].ticket.uri;
+    function setFallbackUri(string calldata _uri) external {
+        if (msg.sender != OWNER) return;
+        fallbackUri = _uri;
+    }
+
+    function uri(RaffleId id) public view returns (string memory _uri) {
+        _uri = $raffles[id].ticket.uri;
+        if (bytes(_uri).length == 0) _uri = fallbackUri;
+    }
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual returns (bool result) {
+        assembly {
+            let s := shr(224, interfaceId)
+            // ERC165: 0x01ffc9a7, ERC1155MetadataURI: 0x0e89341c.
+            // not (ERC1155: 0xd9b67a26) because it's not fully
+            result := or(eq(s, 0x01ffc9a7), eq(s, 0x0e89341c))
+        }
     }
 
     function onERC1155Received(

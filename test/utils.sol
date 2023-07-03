@@ -10,7 +10,7 @@ import {_ERC1155} from "./mocks/erc1155.sol";
 import {_ERC721} from "./mocks/erc721.sol";
 
 contract RflsTestSetupUtils is Test {
-    Rfls rfls = new Rfls(address(this), address(this));
+    Rfls rfls = new Rfls(address(this), address(this), address(this));
 
     _ERC20 erc20;
     _ERC1155 erc1155;

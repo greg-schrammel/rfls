@@ -9,10 +9,10 @@ contract _ERC20 is ERC20 {
     }
 
     function name() public pure override returns (string memory) {
-        return "";
+        return "gregs test token";
     }
 
     function symbol() public pure override returns (string memory) {
-        return "";
+        return "g2t";
     }
 }
