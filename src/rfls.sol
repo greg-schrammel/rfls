@@ -24,31 +24,30 @@ enum RewardType {
 
 struct Reward {
     address addy;
+    RewardType rewardType;
     uint256 tokenId;
     uint256 amount;
-    RewardType rewardType;
 }
 
 struct Ticket {
-    address asset; // usdc, weth
     uint256 price;
     uint256 max;
+    address asset; // usdc, weth
     string uri;
 }
 
 struct Raffle {
     address creator;
     address recipient;
-    Ticket ticket;
-    Reward[] rewards;
     uint256 deadline;
     uint256 init;
     bool completed;
+    Ticket ticket;
 }
 
 struct Participant {
-    address addy;
     uint256 tickets;
+    address addy;
 }
 
 library WeightedRandom {
@@ -105,7 +104,7 @@ library WeightedRandom {
 }
 
 contract Rfls {
-    event Created(Raffle indexed raffle);
+    event Created(RaffleId indexed raffleId, address indexed creator);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
     event Participate(
         RaffleId indexed raffle,
@@ -121,6 +120,7 @@ contract Rfls {
     );
 
     mapping(RaffleId => Raffle) public $raffles;
+    mapping(RaffleId => Reward[]) public $rewards;
     mapping(RaffleId => Participant[]) public $participants;
     mapping(RaffleId => mapping(address => uint256)) $participantIndex;
     mapping(RaffleId => uint256) public $ticketsCounter;
@@ -160,18 +160,17 @@ contract Rfls {
 
     function addRewards(RaffleId id, Reward[] memory rewards) public {
         for (uint8 i = 0; i < rewards.length; i++) {
-            Reward memory reward = rewards[i];
-            _transferReward(reward, msg.sender, address(this));
-            $raffles[id].rewards.push(reward);
+            _transferReward(rewards[i], msg.sender, address(this));
+            $rewards[id].push(rewards[i]);
         }
     }
 
-    function create(Raffle memory raffle) public {
+    function create(Raffle memory raffle, Reward[] memory rewards) public {
         if (block.number > raffle.deadline) revert InvalidDeadline();
 
         RaffleId id = RaffleId.wrap($rafflesCounter);
 
-        addRewards(id, raffle.rewards);
+        addRewards(id, rewards);
         $raffles[id].creator = msg.sender;
         $raffles[id].recipient = raffle.recipient;
         $raffles[id].init = raffle.init;
@@ -182,7 +181,7 @@ contract Rfls {
             $rafflesCounter++;
         }
 
-        emit Created(raffle);
+        emit Created(id, raffle.creator);
     }
 
     function helpCreatorScrewedUp(RaffleId id) public {
@@ -190,9 +189,9 @@ contract Rfls {
         if ($ticketsCounter[id] != 0) revert InProgress();
         delete $raffles[id];
 
-        Raffle memory raffle = $raffles[id];
-        for (uint8 i = 0; i < raffle.rewards.length; i++) {
-            _transferReward(raffle.rewards[i], address(this), msg.sender);
+        Reward[] memory rewards = $rewards[id];
+        for (uint8 i = 0; i < rewards.length; i++) {
+            _transferReward(rewards[i], address(this), msg.sender);
         }
     }
 
@@ -206,12 +205,14 @@ contract Rfls {
         if (block.number < raffle.init) revert NotStartedYet();
         if (block.number > raffle.deadline) revert Ended();
         if (raffle.completed == true) revert AlreadyCompleted();
-        if ($ticketsCounter[id] + amount > raffle.ticket.max)
+
+        $ticketsCounter[id] += amount;
+        if ($ticketsCounter[id] > raffle.ticket.max)
             revert NotEnoughTicketsRemaining();
 
-        uint ticketPrice = raffle.ticket.price;
-        uint fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
-        uint amountAfterFee = (amount * ticketPrice) - fee;
+        uint256 ticketPrice = raffle.ticket.price;
+        uint256 fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
+        uint256 amountAfterFee = (amount * ticketPrice) - fee;
         if (fee > 0)
             ERC20(raffle.ticket.asset).transferFrom(
                 participant,
@@ -224,10 +225,8 @@ contract Rfls {
             amountAfterFee
         );
 
-        $participants[id].push(Participant(participant, amount));
-        $participantIndex[id][participant] = $participants[id].length - 1;
-
-        $ticketsCounter[id] += amount;
+        $participantIndex[id][participant] = $participants[id].length;
+        $participants[id].push(Participant(amount, participant));
 
         emit Participate(id, amount, participant);
 
@@ -252,10 +251,8 @@ contract Rfls {
 
     function draw(RaffleId id) public {
         Raffle memory raffle = $raffles[id];
-
         $raffles[id].completed = true;
         if (raffle.completed == true) revert AlreadyCompleted();
-
         if (raffle.deadline > block.number) revert InProgress();
 
         uint256 randomSample = uint256(
@@ -264,25 +261,23 @@ contract Rfls {
             )
         );
 
+        Reward[] memory rewards = $rewards[id];
+
         address[] memory winners = WeightedRandom.pickMultiple(
             $participants[id],
             randomSample,
             $ticketsCounter[id],
-            raffle.rewards.length
+            rewards.length
         );
 
         unchecked {
             uint i = 0;
-
             for (; i < winners.length; i++) {
-                Reward memory reward = raffle.rewards[i];
-                _transferReward(reward, address(this), winners[i]);
+                _transferReward(rewards[i], address(this), winners[i]);
             }
-
             // return rewards not distributed to the raffle creator
-            for (; i < raffle.rewards.length; i++) {
-                Reward memory reward = raffle.rewards[i];
-                _transferReward(reward, address(this), raffle.creator);
+            for (; i < rewards.length; i++) {
+                _transferReward(rewards[i], address(this), raffle.creator);
             }
         }
 
@@ -293,8 +288,7 @@ contract Rfls {
         address participant,
         RaffleId id
     ) public view returns (uint256) {
-        uint participantIndex = $participantIndex[id][participant];
-        return $participants[id][participantIndex].tickets;
+        return $participants[id][$participantIndex[id][participant]].tickets;
     }
 
     function uri(RaffleId id) public view returns (string memory) {

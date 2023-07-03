@@ -9,17 +9,18 @@ import {RflsTestSetupUtils} from "./utils.sol";
 contract RflsTest is Test, RflsTestSetupUtils {
     function testCreate() public {
         Raffle memory raffle = _raffle();
+        Reward[] memory rewards = _rewards();
 
         uint256 creatorRewardBalanceBefore = nft.balanceOf(
             address(creator),
-            raffle.rewards[0].tokenId
+            rewards[0].tokenId
         );
 
-        _createRaffle(raffle);
+        _createRaffle(raffle, rewards);
 
-        assertEq(nft.balanceOf(address(rfls), raffle.rewards[0].tokenId), 1);
+        assertEq(nft.balanceOf(address(rfls), rewards[0].tokenId), 1);
         assertEq(
-            nft.balanceOf(address(creator), raffle.rewards[0].tokenId),
+            nft.balanceOf(address(creator), rewards[0].tokenId),
             creatorRewardBalanceBefore - 1
         );
 
@@ -29,8 +30,9 @@ contract RflsTest is Test, RflsTestSetupUtils {
 
     function testParticipate() public {
         Raffle memory raffle = _raffle();
+        Reward[] memory rewards = _rewards();
 
-        RaffleId raffleId = _createRaffle(raffle);
+        RaffleId raffleId = _createRaffle(raffle, rewards);
 
         uint participantBalanceBefore = token.balanceOf(participants[0]);
         uint recipientBalanceBefore = token.balanceOf(address(recipient));
@@ -55,7 +57,9 @@ contract RflsTest is Test, RflsTestSetupUtils {
 
     function testDraw() public {
         Raffle memory raffle = _raffle();
-        RaffleId raffleId = _createRaffle(raffle);
+        Reward[] memory rewards = _rewards();
+
+        RaffleId raffleId = _createRaffle(raffle, rewards);
 
         addParticipant(raffleId, raffle, participants[0], 4);
         addParticipant(raffleId, raffle, participants[1], 5);

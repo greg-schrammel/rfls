@@ -66,8 +66,7 @@ contract RflsTestSetupUtils is Test {
 
     function _raffle() internal view returns (Raffle memory raffle) {
         raffle = Raffle({
-            rewards: _rewards(),
-            ticket: Ticket(address(token), 1 ether, 100, ""),
+            ticket: Ticket(1 ether, 100, address(token), ""),
             deadline: block.number + 10,
             init: 0,
             creator: address(0),
@@ -76,13 +75,16 @@ contract RflsTestSetupUtils is Test {
         });
     }
 
-    function _createRaffle(Raffle memory raffle) internal returns (RaffleId) {
+    function _createRaffle(
+        Raffle memory raffle,
+        Reward[] memory rewards
+    ) internal returns (RaffleId) {
         vm.startPrank(creator);
 
         nft.setApprovalForAll(address(rfls), true);
         nft2.approve(address(rfls), 1);
         token.approve(address(rfls), 1000);
-        rfls.create(raffle);
+        rfls.create(raffle, rewards);
 
         vm.stopPrank();
 
