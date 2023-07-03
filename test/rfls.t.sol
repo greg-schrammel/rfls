@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
-import {Raffle, RewardType, RaffleId, Reward, Participant, Ticket, Rfls, InvalidDeadline, NotTheCreator, InProgress, Ended, NotStartedYet, AlreadyCompleted, NotEnoughTicketsRemaining} from "../src/rfls.sol";
+import {Raffle, RewardType, RaffleId, Reward, Ticket, Rfls, InvalidDeadline, NotTheCreator, InProgress, Ended, NotStartedYet, AlreadyCompleted, NotEnoughTicketsRemaining} from "../src/rfls.sol";
 import {RflsTestSetupUtils} from "./utils.sol";
 
 contract RflsTest is Test, RflsTestSetupUtils {
@@ -102,16 +102,18 @@ contract RflsTest is Test, RflsTestSetupUtils {
         uint participantBalanceBefore = token.balanceOf(participants[0]);
         uint recipientBalanceBefore = token.balanceOf(recipient);
 
-        _addParticipant(id, participants[0], 1);
+        uint ticketAmount = 1;
 
-        assertEq(rfls.balanceOf(participants[0], id), 1);
+        _addParticipant(id, participants[0], ticketAmount);
+
+        assertEq(rfls.balanceOf(participants[0], id), ticketAmount);
         assertEq(
             token.balanceOf(participants[0]),
-            participantBalanceBefore - raffle.ticket.price
+            participantBalanceBefore - ticketAmount * raffle.ticket.price
         );
 
         uint fee = (raffle.ticket.price * rfls.FEE()) / 10_000;
-        uint amountAfterFee = (1 * raffle.ticket.price) - fee;
+        uint amountAfterFee = (ticketAmount * raffle.ticket.price) - fee;
 
         assertEq(token.balanceOf(rfls.FEE_RECEIVER()), fee);
         assertEq(

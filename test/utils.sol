@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 
-import {Raffle, RewardType, RaffleId, Reward, Participant, Ticket, Rfls} from "../src/rfls.sol";
+import {Raffle, RewardType, RaffleId, Reward, Ticket, Rfls} from "../src/rfls.sol";
 
 import {_ERC20} from "./mocks/erc20.sol";
 import {_ERC1155} from "./mocks/erc1155.sol";

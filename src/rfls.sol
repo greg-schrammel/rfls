@@ -45,66 +45,6 @@ struct Raffle {
     Ticket ticket;
 }
 
-struct Participant {
-    uint256 tickets;
-    address addy;
-}
-
-library WeightedRandom {
-    function pickOne(
-        uint256 random,
-        Participant[] memory participants
-    ) internal pure returns (uint256) {
-        unchecked {
-            for (uint256 i = 0; i < participants.length; i++) {
-                if (random < participants[i].tickets) return i;
-                random -= participants[i].tickets;
-            }
-            return 0; // should never get here
-        }
-    }
-
-    function updateParticipants(
-        Participant[] memory participants,
-        uint winnerIndex
-    ) internal pure returns (Participant[] memory) {
-        // remove the winner ticket
-        participants[winnerIndex].tickets -= 1;
-
-        // if the participant has no more tickets remove him
-        if (participants[winnerIndex].tickets == 0) {
-            participants[winnerIndex] = participants[participants.length - 1];
-            delete participants[participants.length - 1];
-        }
-
-        return participants;
-    }
-
-    function pickMultiple(
-        Participant[] memory participants,
-        uint256 random,
-        uint256 weightsSum,
-        uint256 max
-    ) internal pure returns (address[] memory) {
-        if (weightsSum == 0) return new address[](0);
-
-        address[] memory winners = new address[](max);
-        unchecked {
-            for (uint256 i = 0; i < max; i++) {
-                uint256 winnerIndex = pickOne(
-                    random % weightsSum,
-                    participants
-                );
-                winners[i] = participants[winnerIndex].addy;
-                participants = updateParticipants(participants, winnerIndex);
-                weightsSum -= 1;
-                if (participants.length == 0) return winners;
-            }
-        }
-        return winners;
-    }
-}
-
 contract Rfls {
     event Created(RaffleId indexed raffleId, address indexed creator);
     event Completed(RaffleId indexed raffle, address[] indexed winners);
@@ -125,9 +65,8 @@ contract Rfls {
     mapping(RaffleId => Raffle) public $raffles;
     mapping(RaffleId => Reward[]) public $rewards;
 
-    mapping(RaffleId => Participant[]) public $participants;
-    mapping(RaffleId => mapping(address => uint256)) internal $participantIndex;
-
+    mapping(RaffleId => address[]) public $participants;
+    mapping(RaffleId => mapping(address => uint256)) public $participantTickets;
     mapping(RaffleId => uint256) public $ticketsCounter;
 
     uint8 public constant FEE = 100;
@@ -209,29 +148,23 @@ contract Rfls {
         if (block.number < raffle.init) revert NotStartedYet();
         if (block.number >= raffle.deadline) revert Ended();
 
-        $ticketsCounter[id] += amount;
-        if ($ticketsCounter[id] > raffle.ticket.max)
-            revert NotEnoughTicketsRemaining();
+        unchecked {
+            uint ticketsCounter = $ticketsCounter[id] + amount;
+            $ticketsCounter[id] = ticketsCounter;
+            if (ticketsCounter > raffle.ticket.max)
+                revert NotEnoughTicketsRemaining();
 
-        uint256 ticketPrice = raffle.ticket.price;
-        uint256 fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
-        uint256 amountAfterFee = (amount * ticketPrice) - fee;
-        if (fee > 0)
-            ERC20(raffle.ticket.asset).transferFrom(
-                participant,
-                FEE_RECEIVER,
-                fee
-            );
-        ERC20(raffle.ticket.asset).transferFrom(
-            participant,
-            raffle.recipient,
-            amountAfterFee
-        );
+            uint256 ticketPrice = raffle.ticket.price;
+            uint256 fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
+            uint256 amountAfterFee = (amount * ticketPrice) - fee;
 
-        // ADASDASDASD
-        $participantIndex[id][participant] = $participants[id].length;
-        $participants[id].push(Participant(amount, participant));
-        // ADASDASDASD
+            ERC20 asset = ERC20(raffle.ticket.asset);
+            if (fee > 0) asset.transferFrom(participant, FEE_RECEIVER, fee);
+            asset.transferFrom(participant, raffle.recipient, amountAfterFee);
+
+            $participantTickets[id][participant] += amount;
+            $participants[id].push(participant);
+        }
 
         emit Participate(id, amount, participant);
 
@@ -254,6 +187,52 @@ contract Rfls {
         participate(id, amount, to);
     }
 
+    function _weightedRandom(
+        address[] memory participants,
+        mapping(address => uint256) storage weights,
+        uint256 seed,
+        uint256 weightsSum,
+        uint256 max
+    ) internal returns (address[] memory) {
+        if (weightsSum == 0) return new address[](0);
+
+        address[] memory winners = new address[](max);
+
+        unchecked {
+            for (uint256 i = 0; i < max; i++) {
+                uint random = seed % weightsSum;
+                for (
+                    uint256 winnerIndex = 0;
+                    winnerIndex < participants.length;
+                    winnerIndex++
+                ) {
+                    address winner = participants[winnerIndex];
+                    uint weight = weights[winner];
+                    if (random < weight) {
+                        winners[i] = winner;
+
+                        // remove the winner ticket
+                        weights[winner] -= 1;
+                        weightsSum -= 1;
+
+                        // if the participant has no more tickets remove him
+                        if (weights[winner] == 0) {
+                            uint lastIndex = participants.length - 1;
+                            participants[winnerIndex] = participants[lastIndex];
+                            delete participants[lastIndex];
+
+                            if (lastIndex == 0) return winners;
+                        }
+
+                        break;
+                    }
+                    random -= weight;
+                }
+            }
+        }
+        return winners;
+    }
+
     function draw(RaffleId id) public {
         Raffle memory raffle = $raffles[id];
         $raffles[id].completed = true;
@@ -262,8 +241,9 @@ contract Rfls {
 
         Reward[] memory rewards = $rewards[id];
 
-        address[] memory winners = WeightedRandom.pickMultiple(
+        address[] memory winners = _weightedRandom(
             $participants[id],
+            $participantTickets[id],
             uint256(
                 blockhash(
                     block.number - raffle.deadline > 254 ? 255 : raffle.deadline
@@ -293,7 +273,7 @@ contract Rfls {
         address participant,
         RaffleId id
     ) public view returns (uint256) {
-        return $participants[id][$participantIndex[id][participant]].tickets;
+        return $participantTickets[id][participant];
     }
 
     function uri(RaffleId id) public view returns (string memory) {
