@@ -111,7 +111,7 @@ contract RflsTest is Test, RflsTestSetupUtils {
         uint participantBalanceBefore = erc20.balanceOf(participants[0]);
         uint recipientBalanceBefore = erc20.balanceOf(recipient);
 
-        uint ticketAmount = 1;
+        uint ticketAmount = 10;
 
         _addParticipant(id, participants[0], ticketAmount);
 

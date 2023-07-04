@@ -119,7 +119,7 @@ contract Rfls {
         }
     }
 
-    function create(Raffle memory raffle, Reward[] memory rewards) public {
+    function create(Raffle calldata raffle, Reward[] memory rewards) public {
         if (block.number >= raffle.deadline) revert InvalidDeadline();
 
         RaffleId id = RaffleId.wrap($rafflesCounter);
@@ -177,8 +177,6 @@ contract Rfls {
             $participantTickets[id][participant] += amount;
             $participants[id].push(participant);
         }
-
-        emit Participate(id, amount, participant);
 
         emit TransferSingle(
             address(this),
@@ -297,6 +295,14 @@ contract Rfls {
     function uri(RaffleId id) public view returns (string memory _uri) {
         _uri = $raffles[id].ticket.uri;
         if (bytes(_uri).length == 0) _uri = fallbackUri;
+    }
+
+    function name() public pure returns (string memory) {
+        return "Raffle Ticket";
+    }
+
+    function symbol() public pure returns (string memory) {
+        return unicode"🎟️";
     }
 
     function supportsInterface(
