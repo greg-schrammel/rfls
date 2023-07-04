@@ -93,11 +93,9 @@ contract Rfls {
             return ERC721(reward.addy).transferFrom(from, to, reward.tokenId);
 
         if (reward.rewardType == RewardType.erc20) {
-            // ew 🤮
             ERC20 token = ERC20(reward.addy);
             if (from == address(this)) token.transfer(to, reward.amount);
             else token.transferFrom(from, to, reward.amount);
-
             return;
         }
 
@@ -112,9 +110,12 @@ contract Rfls {
     }
 
     function addRewards(RaffleId id, Reward[] memory rewards) public {
-        for (uint8 i = 0; i < rewards.length; i++) {
-            _transferReward(rewards[i], msg.sender, address(this));
-            $rewards[id].push(rewards[i]);
+        uint l = rewards.length;
+        unchecked {
+            for (uint256 i = 0; i < l; ++i) {
+                _transferReward(rewards[i], msg.sender, address(this));
+                $rewards[id].push(rewards[i]);
+            }
         }
     }
 
@@ -143,8 +144,10 @@ contract Rfls {
         delete $raffles[id];
 
         Reward[] memory rewards = $rewards[id];
-        for (uint8 i = 0; i < rewards.length; i++) {
-            _transferReward(rewards[i], address(this), msg.sender);
+        unchecked {
+            for (uint i = 0; i < rewards.length; i++) {
+                _transferReward(rewards[i], address(this), msg.sender);
+            }
         }
     }
 
@@ -158,17 +161,16 @@ contract Rfls {
         if (block.number < raffle.init) revert NotStartedYet();
         if (block.number >= raffle.deadline) revert Ended();
 
+        Ticket memory ticket = raffle.ticket;
         unchecked {
-            uint ticketsCounter = $ticketsCounter[id] + amount;
-            $ticketsCounter[id] = ticketsCounter;
-            if (ticketsCounter > raffle.ticket.max)
+            if (($ticketsCounter[id] += amount) > ticket.max)
                 revert NotEnoughTicketsRemaining();
 
-            uint256 ticketPrice = raffle.ticket.price;
-            uint256 fee = ticketPrice > 100 ? (ticketPrice * FEE) / 10_000 : 0;
-            uint256 amountAfterFee = (amount * ticketPrice) - fee;
+            uint256 price = ticket.price;
+            uint256 fee = price > 100 ? (price * FEE) / 10_000 : 0;
+            uint256 amountAfterFee = (amount * price) - fee;
 
-            ERC20 asset = ERC20(raffle.ticket.asset);
+            ERC20 asset = ERC20(ticket.asset);
             if (fee > 0) asset.transferFrom(participant, FEE_RECEIVER, fee);
             asset.transferFrom(participant, raffle.recipient, amountAfterFee);
 
@@ -208,12 +210,13 @@ contract Rfls {
 
         address[] memory winners = new address[](max);
 
+        uint participantsLength = participants.length;
         unchecked {
             for (uint256 i = 0; i < max; i++) {
                 uint random = seed % weightsSum;
                 for (
                     uint256 winnerIndex = 0;
-                    winnerIndex < participants.length;
+                    winnerIndex < participantsLength;
                     winnerIndex++
                 ) {
                     address winner = participants[winnerIndex];
@@ -227,7 +230,7 @@ contract Rfls {
 
                         // if the participant has no more tickets remove him
                         if (weights[winner] == 0) {
-                            uint lastIndex = participants.length - 1;
+                            uint lastIndex = participantsLength - 1;
                             participants[winnerIndex] = participants[lastIndex];
                             delete participants[lastIndex];
 
@@ -250,17 +253,17 @@ contract Rfls {
         if (block.number <= raffle.deadline) revert InProgress();
 
         Reward[] memory rewards = $rewards[id];
+        uint rewardsLength = rewards.length;
+
+        uint256 seed = uint256(blockhash(raffle.deadline));
+        if (seed == 0) seed = uint256(blockhash(block.number - 255));
 
         address[] memory winners = _weightedRandom(
             $participants[id],
             $participantTickets[id],
-            uint256(
-                blockhash(
-                    block.number - raffle.deadline > 254 ? 255 : raffle.deadline
-                )
-            ),
+            seed,
             $ticketsCounter[id],
-            rewards.length
+            rewardsLength
         );
 
         unchecked {
@@ -271,7 +274,7 @@ contract Rfls {
             }
 
             // return rewards not distributed to the raffle creator
-            for (; i < rewards.length; i++) {
+            for (; i < rewardsLength; i++) {
                 _transferReward(rewards[i], address(this), raffle.creator);
             }
         }
